@@ -25,6 +25,12 @@ def admin_required():
     return session.get("role") == "admin"
 
 
+def time_to_str(value):
+    if value is None:
+        return None
+    return str(value)[:5]
+
+
 @app.route("/")
 def home():
     return render_template("login.html")
@@ -236,32 +242,6 @@ def delete_route(route_id):
     return jsonify({"status": "deleted"})
 
 
-@app.route("/buses")
-def buses():
-    if not login_required():
-        return jsonify([])
-
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Bus ORDER BY bus_id DESC")
-    data = cursor.fetchall()
-    conn.close()
-    return jsonify(data)
-
-
-@app.route("/routes")
-def routes():
-    if not login_required():
-        return jsonify([])
-
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Route ORDER BY route_id DESC")
-    data = cursor.fetchall()
-    conn.close()
-    return jsonify(data)
-
-
 @app.route("/combined_data")
 def combined_data():
     if not login_required():
@@ -274,31 +254,50 @@ def combined_data():
         SELECT
             'Bus' AS item_type,
             bus_id AS item_id,
-            bus_number AS col1,
-            capacity AS col2,
+            bus_number AS value_1,
+            CAST(capacity AS CHAR) AS value_2,
             departure_time,
             arrival_time
         FROM Bus
-        UNION ALL
+        ORDER BY bus_id DESC
+    """)
+    bus_rows = cursor.fetchall()
+
+    cursor.execute("""
         SELECT
             'Route' AS item_type,
             route_id AS item_id,
-            source AS col1,
-            destination AS col2,
+            source AS value_1,
+            destination AS value_2,
             departure_time,
             arrival_time
         FROM Route
-        ORDER BY item_type, item_id DESC
+        ORDER BY route_id DESC
     """)
-    data = cursor.fetchall()
+    route_rows = cursor.fetchall()
+
     conn.close()
-    return jsonify(data)
+
+    combined = []
+
+    for row in bus_rows + route_rows:
+        combined.append({
+            "item_type": row["item_type"],
+            "item_id": row["item_id"],
+            "value_1": row["value_1"],
+            "value_2": row["value_2"],
+            "departure_time": time_to_str(row["departure_time"]),
+            "arrival_time": time_to_str(row["arrival_time"])
+        })
+
+    combined.sort(key=lambda x: (x["item_type"], -int(x["item_id"])))
+    return jsonify(combined)
 
 
 @app.route("/analytics")
 def analytics():
-    if not login_required():
-        return jsonify({})
+    if not admin_required():
+        return jsonify({"error": "Unauthorized"}), 403
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)

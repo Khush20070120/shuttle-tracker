@@ -8,7 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="dashboard-body">
   <div class="layout">
@@ -19,7 +18,6 @@
       </div>
       <nav class="sidebar-nav">
         <a href="#data">Data Table</a>
-        <a href="#analytics">Analytics</a>
         <a href="#prediction">AI Prediction</a>
       </nav>
       <a class="logout-btn" href="/logout">Logout</a>
@@ -29,7 +27,7 @@
       <section class="hero-card">
         <div>
           <h1>Shuttle Information</h1>
-          <p>View buses, routes, timings, analytics, and delay prediction.</p>
+          <p>View buses, routes, timings, and delay prediction.</p>
         </div>
       </section>
 
@@ -60,17 +58,6 @@
             </thead>
             <tbody id="combinedTableBody"></tbody>
           </table>
-        </div>
-      </section>
-
-      <section id="analytics" class="panel-grid">
-        <div class="panel-card">
-          <h2>Login By Hour</h2>
-          <canvas id="loginChart"></canvas>
-        </div>
-        <div class="panel-card">
-          <h2>Top Users</h2>
-          <canvas id="userChart"></canvas>
         </div>
       </section>
 

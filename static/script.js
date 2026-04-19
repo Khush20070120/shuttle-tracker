@@ -4,6 +4,9 @@ let userChartInstance = null;
 
 async function getJSON(url) {
     const res = await fetch(url);
+    if (!res.ok) {
+        throw new Error(`Request failed: ${url}`);
+    }
     return await res.json();
 }
 
@@ -16,52 +19,83 @@ function formatTime(value) {
     return String(value).slice(0, 5);
 }
 
+function safeText(value) {
+    if (value === null || value === undefined) return "";
+    return String(value);
+}
+
 async function loadCombinedData() {
-    combinedData = await getJSON("/combined_data");
-    renderCombinedTable();
+    try {
+        combinedData = await getJSON("/combined_data");
+        console.log("combinedData:", combinedData);
+        renderCombinedTable();
+    } catch (err) {
+        console.error("Combined data load error:", err);
+    }
 }
 
 function renderCombinedTable() {
     const tbody = document.getElementById("combinedTableBody");
     if (!tbody) return;
 
-    const searchValue = (document.getElementById("searchInput")?.value || "").toLowerCase();
+    const searchValue = safeText(document.getElementById("searchInput")?.value).trim().toLowerCase();
     const typeValue = document.getElementById("typeFilter")?.value || "All";
 
     tbody.innerHTML = "";
 
     const filtered = combinedData.filter(item => {
-        const matchesType = typeValue === "All" || item.item_type === typeValue;
-        const text = `${item.item_type} ${item.item_id} ${item.col1} ${item.col2} ${item.departure_time} ${item.arrival_time}`.toLowerCase();
-        const matchesSearch = text.includes(searchValue);
+        const itemType = safeText(item.item_type);
+        const itemId = safeText(item.item_id);
+        const value1 = safeText(item.value_1);
+        const value2 = safeText(item.value_2);
+        const dep = formatTime(item.departure_time);
+        const arr = formatTime(item.arrival_time);
+
+        const matchesType = typeValue === "All" || itemType === typeValue;
+        const searchText = `${itemType} ${itemId} ${value1} ${value2} ${dep} ${arr}`.toLowerCase();
+        const matchesSearch = searchValue === "" || searchText.includes(searchValue);
+
         return matchesType && matchesSearch;
     });
 
+    if (filtered.length === 0) {
+        const colspan = isAdminPage() ? 7 : 6;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;">No matching data found</td></tr>`;
+        return;
+    }
+
     filtered.forEach(item => {
+        const itemType = safeText(item.item_type);
+        const itemId = safeText(item.item_id);
+        const value1 = safeText(item.value_1);
+        const value2 = safeText(item.value_2);
+        const dep = formatTime(item.departure_time);
+        const arr = formatTime(item.arrival_time);
+
         const row = document.createElement("tr");
 
         let actions = "";
         if (isAdminPage()) {
-            if (item.item_type === "Bus") {
+            if (itemType === "Bus") {
                 actions = `
                     <button class="action-btn edit-btn" onclick='editBus(${JSON.stringify(item)})'>Edit</button>
-                    <button class="action-btn delete-btn" onclick='deleteBus(${item.item_id})'>Delete</button>
+                    <button class="action-btn delete-btn" onclick='deleteBus(${itemId})'>Delete</button>
                 `;
             } else {
                 actions = `
                     <button class="action-btn edit-btn" onclick='editRoute(${JSON.stringify(item)})'>Edit</button>
-                    <button class="action-btn delete-btn" onclick='deleteRoute(${item.item_id})'>Delete</button>
+                    <button class="action-btn delete-btn" onclick='deleteRoute(${itemId})'>Delete</button>
                 `;
             }
         }
 
         row.innerHTML = `
-            <td>${item.item_type}</td>
-            <td>${item.item_id}</td>
-            <td>${item.col1}</td>
-            <td>${item.col2}</td>
-            <td>${formatTime(item.departure_time)}</td>
-            <td>${formatTime(item.arrival_time)}</td>
+            <td>${itemType}</td>
+            <td>${itemId}</td>
+            <td>${value1}</td>
+            <td>${value2}</td>
+            <td>${dep}</td>
+            <td>${arr}</td>
             ${isAdminPage() ? `<td>${actions}</td>` : ""}
         `;
         tbody.appendChild(row);
@@ -88,21 +122,20 @@ async function saveBus() {
 
     resetBusForm();
     await loadCombinedData();
-    await loadAnalytics();
+    if (isAdminPage()) await loadAnalytics();
 }
 
 function editBus(item) {
     document.getElementById("bus_id").value = item.item_id;
-    document.getElementById("bus_number").value = item.col1;
-    document.getElementById("capacity").value = item.col2;
+    document.getElementById("bus_number").value = item.value_1;
+    document.getElementById("capacity").value = item.value_2;
     document.getElementById("bus_departure_time").value = formatTime(item.departure_time);
     document.getElementById("bus_arrival_time").value = formatTime(item.arrival_time);
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function resetBusForm() {
-    const ids = ["bus_id", "bus_number", "capacity", "bus_departure_time", "bus_arrival_time"];
-    ids.forEach(id => {
+    ["bus_id", "bus_number", "capacity", "bus_departure_time", "bus_arrival_time"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = "";
     });
@@ -112,7 +145,7 @@ async function deleteBus(busId) {
     if (!confirm("Delete this bus?")) return;
     await fetch(`/delete_bus/${busId}`, { method: "DELETE" });
     await loadCombinedData();
-    await loadAnalytics();
+    if (isAdminPage()) await loadAnalytics();
 }
 
 async function saveRoute() {
@@ -135,21 +168,20 @@ async function saveRoute() {
 
     resetRouteForm();
     await loadCombinedData();
-    await loadAnalytics();
+    if (isAdminPage()) await loadAnalytics();
 }
 
 function editRoute(item) {
     document.getElementById("route_id").value = item.item_id;
-    document.getElementById("source").value = item.col1;
-    document.getElementById("destination").value = item.col2;
+    document.getElementById("source").value = item.value_1;
+    document.getElementById("destination").value = item.value_2;
     document.getElementById("route_departure_time").value = formatTime(item.departure_time);
     document.getElementById("route_arrival_time").value = formatTime(item.arrival_time);
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function resetRouteForm() {
-    const ids = ["route_id", "source", "destination", "route_departure_time", "route_arrival_time"];
-    ids.forEach(id => {
+    ["route_id", "source", "destination", "route_departure_time", "route_arrival_time"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = "";
     });
@@ -159,23 +191,29 @@ async function deleteRoute(routeId) {
     if (!confirm("Delete this route?")) return;
     await fetch(`/delete_route/${routeId}`, { method: "DELETE" });
     await loadCombinedData();
-    await loadAnalytics();
+    if (isAdminPage()) await loadAnalytics();
 }
 
 async function loadAnalytics() {
-    const analytics = await getJSON("/analytics");
+    if (!isAdminPage()) return;
 
-    const totalBuses = document.getElementById("totalBuses");
-    const totalRoutes = document.getElementById("totalRoutes");
-    const totalLogins = document.getElementById("totalLogins");
-    const avgCapacity = document.getElementById("avgCapacity");
+    try {
+        const analytics = await getJSON("/analytics");
 
-    if (totalBuses) totalBuses.textContent = analytics.total_buses ?? 0;
-    if (totalRoutes) totalRoutes.textContent = analytics.total_routes ?? 0;
-    if (totalLogins) totalLogins.textContent = analytics.total_logins ?? 0;
-    if (avgCapacity) avgCapacity.textContent = analytics.avg_capacity ?? 0;
+        const totalBuses = document.getElementById("totalBuses");
+        const totalRoutes = document.getElementById("totalRoutes");
+        const totalLogins = document.getElementById("totalLogins");
+        const avgCapacity = document.getElementById("avgCapacity");
 
-    renderCharts(analytics);
+        if (totalBuses) totalBuses.textContent = analytics.total_buses ?? 0;
+        if (totalRoutes) totalRoutes.textContent = analytics.total_routes ?? 0;
+        if (totalLogins) totalLogins.textContent = analytics.total_logins ?? 0;
+        if (avgCapacity) avgCapacity.textContent = analytics.avg_capacity ?? 0;
+
+        renderCharts(analytics);
+    } catch (err) {
+        console.error("Analytics load error:", err);
+    }
 }
 
 function renderCharts(data) {
@@ -231,5 +269,7 @@ async function predictDelay() {
 
 window.onload = async function () {
     await loadCombinedData();
-    await loadAnalytics();
+    if (isAdminPage()) {
+        await loadAnalytics();
+    }
 };

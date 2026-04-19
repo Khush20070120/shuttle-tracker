@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shuttle Tracker Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+  <div class="auth-page">
+    <div class="auth-left">
+      <div class="brand-badge">Shuttle Tracker</div>
+      <h1>Manage routes, buses, analytics and AI delay prediction.</h1>
+      <p>Modern transport dashboard for admin and users.</p>
+      <div class="feature-list">
+        <div class="feature-item">Live combined data table</div>
+        <div class="feature-item">Search and filter</div>
+        <div class="feature-item">Analytics and charts</div>
+        <div class="feature-item">AI prediction</div>
+      </div>
+    </div>
+
+    <div class="auth-card">
+      <h2>Welcome back</h2>
+      <p class="subtext">Sign in to continue</p>
+
+      <form method="POST" action="/login">
+        <label>Username</label>
+        <input type="text" name="username" placeholder="Enter username" required>
+
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Enter password" required>
+
+        <button type="submit" class="primary-btn">Login</button>
+      </form>
+
+      <p class="switch-link">Don’t have an account? <a href="/signup">Create one</a></p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dashboard-body">
+  <div class="layout">
+    <aside class="sidebar">
+      <div>
+        <h2>User Panel</h2>
+        <p class="sidebar-user">Hi, {{ username }}</p>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#data">Data Table</a>
+        <a href="#analytics">Analytics</a>
+        <a href="#prediction">AI Prediction</a>
+      </nav>
+      <a class="logout-btn" href="/logout">Logout</a>
+    </aside>
+
+    <main class="main-content">
+      <section class="hero-card">
+        <div>
+          <h1>Shuttle Information</h1>
+          <p>View buses, routes, timings, analytics, and delay prediction.</p>
+        </div>
+      </section>
+
+      <section id="data" class="panel-card">
+        <div class="panel-head">
+          <h2>Combined Data Table</h2>
+          <div class="filter-row">
+            <input id="searchInput" type="text" placeholder="Search..." onkeyup="renderCombinedTable()">
+            <select id="typeFilter" onchange="renderCombinedTable()">
+              <option value="All">All</option>
+              <option value="Bus">Bus</option>
+              <option value="Route">Route</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>ID</th>
+                <th>Value 1</th>
+                <th>Value 2</th>
+                <th>Departure</th>
+                <th>Arrival</th>
+              </tr>
+            </thead>
+            <tbody id="combinedTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="analytics" class="panel-grid">
+        <div class="panel-card">
+          <h2>Login By Hour</h2>
+          <canvas id="loginChart"></canvas>
+        </div>
+        <div class="panel-card">
+          <h2>Top Users</h2>
+          <canvas id="userChart"></canvas>
+        </div>
+      </section>
+
+      <section id="prediction" class="panel-card">
+        <h2>AI Delay Prediction</h2>
+        <div class="prediction-grid">
+          <div>
+            <label>Traffic (1-10)</label>
+            <input type="number" id="traffic" min="1" max="10" value="5">
+          </div>
+          <div>
+            <label>Distance (km)</label>
+            <input type="number" id="distance" min="1" value="10">
+          </div>
+          <div>
+            <label>Weather (1-5)</label>
+            <input type="number" id="weather" min="1" max="5" value="2">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="primary-btn" onclick="predictDelay()">Predict Delay</button>
+        </div>
+        <div class="prediction-result" id="predictionResult">Predicted delay will appear here.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shuttle Tracker Signup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+  <div class="auth-page">
+    <div class="auth-left">
+      <div class="brand-badge">Shuttle Tracker</div>
+      <h1>Create your account</h1>
+      <p>Add user or admin access for the local system.</p>
+    </div>
+
+    <div class="auth-card">
+      <h2>Sign up</h2>
+      <p class="subtext">Create a new account</p>
+
+      <form method="POST" action="/signup">
+        <label>Username</label>
+        <input type="text" name="username" placeholder="Choose username" required>
+
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Choose password" required>
+
+        <label>Role</label>
+        <select name="role" required>
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <button type="submit" class="primary-btn">Create account</button>
+      </form>
+
+      <p class="switch-link">Already have an account? <a href="/">Login</a></p>
+    </div>
+  </div>
+</body>
+</html>

@@ -4,16 +4,18 @@ from mysql.connector import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 from model import predict_delay_minutes
 
+
+import os
+import mysql.connector
 app = Flask(__name__)
 app.secret_key = "secret123"
-
-
 def get_db():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",   # put your MySQL password here if needed
-        database="shuttle_tracker1"
+        host=os.environ.get("DB_HOST", "localhost"),
+        user=os.environ.get("DB_USER", "root"),
+        password=os.environ.get("DB_PASSWORD", ""),
+        database=os.environ.get("DB_NAME", "shuttle_tracker1"),
+        port=int(os.environ.get("DB_PORT", "3306"))
     )
 
 

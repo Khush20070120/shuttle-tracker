@@ -1,22 +1,130 @@
+import os
+import sqlite3
+
 from flask import Flask, request, render_template, redirect, session, jsonify
 import mysql.connector
-from mysql.connector import Error
 from werkzeug.security import generate_password_hash, check_password_hash
 from model import predict_delay_minutes
 
-
-import os
-import mysql.connector
 app = Flask(__name__)
 app.secret_key = "secret123"
+DB_PATH = os.path.join(os.path.dirname(__file__), "shuttle_tracker.db")
+
+
+def _sqlite_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def get_db():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", ""),
-        database=os.environ.get("DB_NAME", "shuttle_tracker1"),
-        port=int(os.environ.get("DB_PORT", "3306"))
+    try:
+        conn = mysql.connector.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            user=os.environ.get("DB_USER", "root"),
+            password=os.environ.get("DB_PASSWORD", ""),
+            database=os.environ.get("DB_NAME", "shuttle_tracker1"),
+            port=int(os.environ.get("DB_PORT", "3306")),
+        )
+        app.config["DB_ENGINE"] = "mysql"
+        return conn
+    except mysql.connector.Error:
+        conn = _sqlite_db()
+        app.config["DB_ENGINE"] = "sqlite"
+        return conn
+
+
+def db_placeholder():
+    return "?" if app.config.get("DB_ENGINE") == "sqlite" else "%s"
+
+
+def db_placeholders(count):
+    return ", ".join(db_placeholder() for _ in range(count))
+
+
+def row_to_dict(row):
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row
+    return {key: row[key] for key in row.keys()}
+
+
+def ensure_db():
+    conn = _sqlite_db()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS Users (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            role TEXT DEFAULT 'user'
+        )
+        """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS LoginLogs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            role TEXT,
+            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS Bus (
+            bus_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bus_number TEXT,
+            capacity INTEGER,
+            departure_time TEXT,
+            arrival_time TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS Route (
+            route_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            destination TEXT,
+            departure_time TEXT,
+            arrival_time TEXT
+        )
+        """
+    )
+
+    if conn.execute("SELECT COUNT(*) FROM Users").fetchone()[0] == 0:
+        conn.execute(
+            "INSERT INTO Users (username, password, role) VALUES (?, ?, ?)",
+            ("admin", generate_password_hash("admin123", method="pbkdf2:sha256"), "admin"),
+        )
+        conn.execute(
+            "INSERT INTO Users (username, password, role) VALUES (?, ?, ?)",
+            ("user1", generate_password_hash("user123", method="pbkdf2:sha256"), "user"),
+        )
+
+    if conn.execute("SELECT COUNT(*) FROM Bus").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO Bus (bus_number, capacity, departure_time, arrival_time) VALUES (?, ?, ?, ?)",
+            [
+                ("BUS-101", 42, "08:00:00", "09:00:00"),
+                ("BUS-202", 36, "09:30:00", "10:45:00"),
+            ],
+        )
+
+    if conn.execute("SELECT COUNT(*) FROM Route").fetchone()[0] == 0:
+        conn.executemany(
+            "INSERT INTO Route (source, destination, departure_time, arrival_time) VALUES (?, ?, ?, ?)",
+            [
+                ("Campus", "City Center", "08:10:00", "09:10:00"),
+                ("Station", "College", "12:00:00", "13:00:00"),
+            ],
+        )
+
+    conn.commit()
+    conn.close()
 
 
 def login_required():
@@ -54,13 +162,13 @@ def signup():
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO Users (username, password, role) VALUES (%s, %s, %s)",
-                (username, hashed_password, role)
+                f"INSERT INTO Users (username, password, role) VALUES ({db_placeholders(3)})",
+                (username, hashed_password, role),
             )
             conn.commit()
             conn.close()
             return redirect("/")
-        except Error:
+        except mysql.connector.Error:
             return "User already exists or database error"
 
     return render_template("signup.html")
@@ -72,9 +180,11 @@ def login():
     password = request.form["password"]
 
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM Users WHERE username=%s", (username,))
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM Users WHERE username={db_placeholder()}", (username,))
     user = cursor.fetchone()
+    if user is not None and app.config.get("DB_ENGINE") == "sqlite":
+        user = row_to_dict(user)
 
     if user and check_password_hash(user["password"], password):
         session["username"] = user["username"]
@@ -82,8 +192,8 @@ def login():
 
         log_cursor = conn.cursor()
         log_cursor.execute(
-            "INSERT INTO LoginLogs (username, role) VALUES (%s, %s)",
-            (user["username"], user["role"])
+            f"INSERT INTO LoginLogs (username, role) VALUES ({db_placeholders(2)})",
+            (user["username"], user["role"]),
         )
         conn.commit()
         conn.close()
@@ -123,16 +233,8 @@ def add_bus():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        INSERT INTO Bus (bus_number, capacity, departure_time, arrival_time)
-        VALUES (%s, %s, %s, %s)
-        """,
-        (
-            data["bus_number"],
-            data["capacity"],
-            data["departure_time"],
-            data["arrival_time"]
-        )
+        f"INSERT INTO Bus (bus_number, capacity, departure_time, arrival_time) VALUES ({db_placeholders(4)})",
+        (data["bus_number"], data["capacity"], data["departure_time"], data["arrival_time"]),
     )
     conn.commit()
     conn.close()
@@ -148,16 +250,8 @@ def add_route():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        INSERT INTO Route (source, destination, departure_time, arrival_time)
-        VALUES (%s, %s, %s, %s)
-        """,
-        (
-            data["source"],
-            data["destination"],
-            data["departure_time"],
-            data["arrival_time"]
-        )
+        f"INSERT INTO Route (source, destination, departure_time, arrival_time) VALUES ({db_placeholders(4)})",
+        (data["source"], data["destination"], data["departure_time"], data["arrival_time"]),
     )
     conn.commit()
     conn.close()
@@ -173,18 +267,8 @@ def update_bus(bus_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        UPDATE Bus
-        SET bus_number=%s, capacity=%s, departure_time=%s, arrival_time=%s
-        WHERE bus_id=%s
-        """,
-        (
-            data["bus_number"],
-            data["capacity"],
-            data["departure_time"],
-            data["arrival_time"],
-            bus_id
-        )
+        f"UPDATE Bus SET bus_number={db_placeholder()}, capacity={db_placeholder()}, departure_time={db_placeholder()}, arrival_time={db_placeholder()} WHERE bus_id={db_placeholder()}",
+        (data["bus_number"], data["capacity"], data["departure_time"], data["arrival_time"], bus_id),
     )
     conn.commit()
     conn.close()
@@ -200,18 +284,8 @@ def update_route(route_id):
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        UPDATE Route
-        SET source=%s, destination=%s, departure_time=%s, arrival_time=%s
-        WHERE route_id=%s
-        """,
-        (
-            data["source"],
-            data["destination"],
-            data["departure_time"],
-            data["arrival_time"],
-            route_id
-        )
+        f"UPDATE Route SET source={db_placeholder()}, destination={db_placeholder()}, departure_time={db_placeholder()}, arrival_time={db_placeholder()} WHERE route_id={db_placeholder()}",
+        (data["source"], data["destination"], data["departure_time"], data["arrival_time"], route_id),
     )
     conn.commit()
     conn.close()
@@ -225,7 +299,7 @@ def delete_bus(bus_id):
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM Bus WHERE bus_id=%s", (bus_id,))
+    cursor.execute(f"DELETE FROM Bus WHERE bus_id={db_placeholder()}", (bus_id,))
     conn.commit()
     conn.close()
     return jsonify({"status": "deleted"})
@@ -238,7 +312,7 @@ def delete_route(route_id):
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM Route WHERE route_id=%s", (route_id,))
+    cursor.execute(f"DELETE FROM Route WHERE route_id={db_placeholder()}", (route_id,))
     conn.commit()
     conn.close()
     return jsonify({"status": "deleted"})
@@ -250,47 +324,84 @@ def combined_data():
         return jsonify([])
 
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("""
-        SELECT
-            'Bus' AS item_type,
-            bus_id AS item_id,
-            bus_number AS value_1,
-            CAST(capacity AS CHAR) AS value_2,
-            departure_time,
-            arrival_time
-        FROM Bus
-        ORDER BY bus_id DESC
-    """)
-    bus_rows = cursor.fetchall()
+    if app.config.get("DB_ENGINE") == "sqlite":
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                'Bus' AS item_type,
+                bus_id AS item_id,
+                bus_number AS value_1,
+                CAST(capacity AS TEXT) AS value_2,
+                departure_time,
+                arrival_time
+            FROM Bus
+            ORDER BY bus_id DESC
+            """
+        )
+        bus_rows = [row_to_dict(r) for r in cursor.fetchall()]
 
-    cursor.execute("""
-        SELECT
-            'Route' AS item_type,
-            route_id AS item_id,
-            source AS value_1,
-            destination AS value_2,
-            departure_time,
-            arrival_time
-        FROM Route
-        ORDER BY route_id DESC
-    """)
-    route_rows = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT
+                'Route' AS item_type,
+                route_id AS item_id,
+                source AS value_1,
+                destination AS value_2,
+                departure_time,
+                arrival_time
+            FROM Route
+            ORDER BY route_id DESC
+            """
+        )
+        route_rows = [row_to_dict(r) for r in cursor.fetchall()]
+    else:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                'Bus' AS item_type,
+                bus_id AS item_id,
+                bus_number AS value_1,
+                CAST(capacity AS CHAR) AS value_2,
+                departure_time,
+                arrival_time
+            FROM Bus
+            ORDER BY bus_id DESC
+            """
+        )
+        bus_rows = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT
+                'Route' AS item_type,
+                route_id AS item_id,
+                source AS value_1,
+                destination AS value_2,
+                departure_time,
+                arrival_time
+            FROM Route
+            ORDER BY route_id DESC
+            """
+        )
+        route_rows = cursor.fetchall()
 
     conn.close()
 
     combined = []
-
     for row in bus_rows + route_rows:
-        combined.append({
-            "item_type": row["item_type"],
-            "item_id": row["item_id"],
-            "value_1": row["value_1"],
-            "value_2": row["value_2"],
-            "departure_time": time_to_str(row["departure_time"]),
-            "arrival_time": time_to_str(row["arrival_time"])
-        })
+        combined.append(
+            {
+                "item_type": row["item_type"],
+                "item_id": row["item_id"],
+                "value_1": row["value_1"],
+                "value_2": row["value_2"],
+                "departure_time": time_to_str(row["departure_time"]),
+                "arrival_time": time_to_str(row["arrival_time"]),
+            }
+        )
 
     combined.sort(key=lambda x: (x["item_type"], -int(x["item_id"])))
     return jsonify(combined)
@@ -302,47 +413,88 @@ def analytics():
         return jsonify({"error": "Unauthorized"}), 403
 
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT COUNT(*) AS total_buses FROM Bus")
-    total_buses = cursor.fetchone()["total_buses"]
+    if app.config.get("DB_ENGINE") == "sqlite":
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) AS total_buses FROM Bus")
+        total_buses = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) AS total_routes FROM Route")
-    total_routes = cursor.fetchone()["total_routes"]
+        cursor.execute("SELECT COUNT(*) AS total_routes FROM Route")
+        total_routes = cursor.fetchone()[0]
 
-    cursor.execute("SELECT COUNT(*) AS total_logins FROM LoginLogs")
-    total_logins = cursor.fetchone()["total_logins"]
+        cursor.execute("SELECT COUNT(*) AS total_logins FROM LoginLogs")
+        total_logins = cursor.fetchone()[0]
 
-    cursor.execute("SELECT IFNULL(AVG(capacity),0) AS avg_capacity FROM Bus")
-    avg_capacity = float(cursor.fetchone()["avg_capacity"])
+        cursor.execute("SELECT COALESCE(AVG(capacity), 0) AS avg_capacity FROM Bus")
+        avg_capacity = float(cursor.fetchone()[0])
 
-    cursor.execute("""
-        SELECT username, COUNT(*) AS login_count
-        FROM LoginLogs
-        GROUP BY username
-        ORDER BY login_count DESC
-        LIMIT 5
-    """)
-    top_users = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT username, COUNT(*) AS login_count
+            FROM LoginLogs
+            GROUP BY username
+            ORDER BY login_count DESC
+            LIMIT 5
+            """
+        )
+        top_users = [row_to_dict(row) for row in cursor.fetchall()]
 
-    cursor.execute("""
-        SELECT HOUR(login_time) AS login_hour, COUNT(*) AS count
-        FROM LoginLogs
-        GROUP BY HOUR(login_time)
-        ORDER BY login_hour
-    """)
-    login_by_hour = cursor.fetchall()
+        cursor.execute(
+            """
+            SELECT CAST(strftime('%H', login_time) AS INTEGER) AS login_hour, COUNT(*) AS count
+            FROM LoginLogs
+            GROUP BY strftime('%H', login_time)
+            ORDER BY login_hour
+            """
+        )
+        login_by_hour = [row_to_dict(row) for row in cursor.fetchall()]
+    else:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT COUNT(*) AS total_buses FROM Bus")
+        total_buses = cursor.fetchone()["total_buses"]
+
+        cursor.execute("SELECT COUNT(*) AS total_routes FROM Route")
+        total_routes = cursor.fetchone()["total_routes"]
+
+        cursor.execute("SELECT COUNT(*) AS total_logins FROM LoginLogs")
+        total_logins = cursor.fetchone()["total_logins"]
+
+        cursor.execute("SELECT IFNULL(AVG(capacity),0) AS avg_capacity FROM Bus")
+        avg_capacity = float(cursor.fetchone()["avg_capacity"])
+
+        cursor.execute(
+            """
+            SELECT username, COUNT(*) AS login_count
+            FROM LoginLogs
+            GROUP BY username
+            ORDER BY login_count DESC
+            LIMIT 5
+            """
+        )
+        top_users = cursor.fetchall()
+
+        cursor.execute(
+            """
+            SELECT HOUR(login_time) AS login_hour, COUNT(*) AS count
+            FROM LoginLogs
+            GROUP BY HOUR(login_time)
+            ORDER BY login_hour
+            """
+        )
+        login_by_hour = cursor.fetchall()
 
     conn.close()
 
-    return jsonify({
-        "total_buses": total_buses,
-        "total_routes": total_routes,
-        "total_logins": total_logins,
-        "avg_capacity": round(avg_capacity, 2),
-        "top_users": top_users,
-        "login_by_hour": login_by_hour
-    })
+    return jsonify(
+        {
+            "total_buses": total_buses,
+            "total_routes": total_routes,
+            "total_logins": total_logins,
+            "avg_capacity": round(avg_capacity, 2),
+            "top_users": top_users,
+            "login_by_hour": login_by_hour,
+        }
+    )
 
 
 @app.route("/predict_delay", methods=["POST"])
@@ -360,4 +512,5 @@ def predict_delay():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    ensure_db()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5001")), debug=True)
